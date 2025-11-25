@@ -1,6 +1,11 @@
 import Fastify from 'fastify';
 import pino from 'pino';
 import { GeneratorManager } from '@codegen/codegen-core';
+import {
+  InMemoryArtifactStore,
+  InMemoryContentAddressableStorage,
+  generateIdempotencyKey,
+} from '@codegen/codegen-artifact-store';
 import { HelloWorldGenerator } from './generators/hello-world';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 
@@ -20,6 +25,9 @@ const generatorManager = new GeneratorManager();
 // Register hello-world generator
 const helloWorldGenerator = new HelloWorldGenerator();
 generatorManager.register(helloWorldGenerator);
+
+// Initialize artifact store
+const artifactStore = new InMemoryArtifactStore();
 
 async function bootstrap() {
   const fastify = Fastify({
@@ -53,12 +61,12 @@ async function bootstrap() {
     },
   );
 
-  // POST /api/generate - Generate code
-  fastify.post<{ Body: { generatorId: string; spec: unknown; tenantId?: string } }>(
+  // POST /api/generate - Generate code with artifact storage and idempotency
+  fastify.post<{ Body: { generatorId: string; spec: unknown; tenantId?: string; idempotencyKey?: string } }>(
     '/api/generate',
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { generatorId, spec, tenantId = 'default' } = request.body;
+        const { generatorId, spec, tenantId = 'default', idempotencyKey: providedKey } = request.body;
 
         if (!generatorId) {
           reply.code(400);
@@ -76,14 +84,131 @@ async function bootstrap() {
           return { error: `Generator ${generatorId} not found` };
         }
 
+        // Generate idempotency key
+        const idempotencyKey = providedKey || generateIdempotencyKey(generatorId, spec);
+
+        // Check if already generated
+        const existing = await artifactStore.getArtifactByIdempotencyKey(idempotencyKey);
+        if (existing) {
+          reply.code(200);
+          return { artifact: existing, cached: true };
+        }
+
         // Generate code
         const result = await generator.generate(spec, { tenantId });
 
-        return result;
+        // Store artifact with idempotency
+        const stored = await artifactStore.storeArtifact(
+          {
+            version: 1,
+            metadata: result.metadata,
+            files: result.files,
+          },
+          idempotencyKey,
+        );
+
+        reply.code(201);
+        return { artifact: stored, cached: false };
       } catch (err) {
         logger.error(err);
         reply.code(500);
         return { error: err instanceof Error ? err.message : 'Generation failed' };
+      }
+    },
+  );
+
+  // GET /api/artifacts/:id - Retrieve artifact by ID
+  fastify.get(
+    '/api/artifacts/:id',
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      try {
+        const { id } = request.params;
+
+        const artifact = await artifactStore.getArtifact(id);
+        if (!artifact) {
+          reply.code(404);
+          return { error: `Artifact ${id} not found` };
+        }
+
+        return { artifact };
+      } catch (err) {
+        logger.error(err);
+        reply.code(500);
+        return { error: err instanceof Error ? err.message : 'Failed to retrieve artifact' };
+      }
+    },
+  );
+
+  // GET /api/artifacts/:id/versions - List all versions of an artifact
+  fastify.get(
+    '/api/artifacts/:id/versions',
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      try {
+        const { id } = request.params;
+
+        const versions = await artifactStore.listArtifactVersions(id);
+        return {
+          artifactId: id,
+          versions: versions.map((v) => ({
+            version: v.version,
+            createdAt: v.createdAt,
+            contentHash: v.contentHash,
+            size: v.size,
+          })),
+          totalVersions: versions.length,
+        };
+      } catch (err) {
+        logger.error(err);
+        reply.code(500);
+        return { error: err instanceof Error ? err.message : 'Failed to list versions' };
+      }
+    },
+  );
+
+  // GET /api/artifacts/:id/v/:version - Retrieve specific artifact version
+  fastify.get(
+    '/api/artifacts/:id/v/:version',
+    async (
+      request: FastifyRequest<{ Params: { id: string; version: string } }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { id, version } = request.params;
+        const versionNum = parseInt(version, 10);
+
+        if (isNaN(versionNum)) {
+          reply.code(400);
+          return { error: 'Invalid version number' };
+        }
+
+        const artifact = await artifactStore.getArtifactVersion(id, versionNum);
+        if (!artifact) {
+          reply.code(404);
+          return { error: `Artifact ${id} version ${versionNum} not found` };
+        }
+
+        return { artifact };
+      } catch (err) {
+        logger.error(err);
+        reply.code(500);
+        return { error: err instanceof Error ? err.message : 'Failed to retrieve artifact version' };
+      }
+    },
+  );
+
+  // DELETE /api/artifacts/:id - Delete artifact
+  fastify.delete(
+    '/api/artifacts/:id',
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      try {
+        const { id } = request.params;
+
+        await artifactStore.deleteArtifact(id);
+        return { success: true, message: `Artifact ${id} deleted` };
+      } catch (err) {
+        logger.error(err);
+        reply.code(500);
+        return { error: err instanceof Error ? err.message : 'Failed to delete artifact' };
       }
     },
   );

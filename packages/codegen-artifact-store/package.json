@@ -18,8 +18,14 @@
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage"
   },
+  "dependencies": {
+    "@codegen/codegen-core": "workspace:*",
+    "minio": "^7.1.0",
+    "pg": "^8.11.0"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
     "@vitest/coverage-v8": "^1.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0",
