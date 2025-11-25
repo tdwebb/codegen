@@ -1,0 +1,33 @@
+{
+  "name": "codegen",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CodeGen - AI-optimized code generator platform",
+  "scripts": {
+    "build": "pnpm -r --filter './packages/**' --filter './apps/**' build",
+    "test": "pnpm -r --filter './packages/**' --filter './apps/**' test",
+    "test:watch": "pnpm -r --filter './packages/**' --filter './apps/**' test:watch",
+    "test:coverage": "pnpm -r --filter './packages/**' --filter './apps/**' test:coverage",
+    "test:integration": "pnpm -r --filter './packages/**' --filter './apps/**' test:integration",
+    "test:coverage-report": "pnpm -r test:coverage",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "type-check": "tsc --noEmit",
+    "dev": "pnpm -F @codegen/codegen-service dev",
+    "db:migrate": "pnpm -F @codegen/codegen-service db:migrate"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.3.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "typescript": "^5.3.0"
+    }
+  }
+}

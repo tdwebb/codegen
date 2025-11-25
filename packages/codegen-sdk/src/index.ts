@@ -1,0 +1,5 @@
+/**
+ * @codegen/codegen-sdk
+ */
+
+export const version = '0.1.0';

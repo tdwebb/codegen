@@ -1,0 +1,26 @@
+id: hello-world
+version: 1.0.0
+displayName: Hello World Generator
+description: A simple hello world generator that creates a TypeScript file
+
+inputSchema:
+  type: object
+  properties:
+    name:
+      type: string
+      description: The name to greet
+  required:
+    - name
+
+outputs:
+  - name: hello.ts
+    path: hello.ts
+    template: hello.ts.hbs
+    language: typescript
+    description: A simple hello world TypeScript file
+
+entryTemplate: hello.ts.hbs
+
+capabilities:
+  - single-file
+  - templating
